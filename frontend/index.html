@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitoring Line Produksi</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --line: #2b3340;
+      --text: #f2f5f9;
+      --muted: #9aa7b8;
+      --running: #1faa59;
+      --idle: #f5b301;
+      --down: #e5222b;
+      --offline: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---------- header ---------- */
+    header {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--line);
+      flex: 0 0 auto;
+    }
+    header h1 { margin: 0; font-size: clamp(1.1rem, 2.2vw, 1.8rem); letter-spacing: .02em; }
+    .summary { display: flex; gap: 10px; flex-wrap: wrap; font-weight: 700; font-size: clamp(.95rem, 1.6vw, 1.3rem); }
+    .chip { padding: 4px 14px; border-radius: 999px; color: #fff; }
+    .chip.running { background: var(--running); }
+    .chip.idle    { background: var(--idle); color: #1a1300; }
+    .chip.down    { background: var(--down); }
+    .chip.offline { background: var(--offline); }
+    .clock { font-variant-numeric: tabular-nums; font-size: clamp(1rem, 2vw, 1.6rem); color: var(--muted); }
+
+    #banner {
+      display: none; padding: 10px 28px; background: #7c2d12; color: #fff;
+      font-weight: 700; font-size: 1.1rem; text-align: center; flex: 0 0 auto;
+    }
+    #banner.show { display: block; }
+
+    /* ---------- grid kartu ---------- */
+    main {
+      flex: 1 1 auto; min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+      grid-auto-rows: minmax(min-content, 1fr);   /* penuhi layar TV, tapi boleh tumbuh (HP: scroll) */
+      gap: 22px; padding: 22px 28px;
+      overflow-y: auto;
+    }
+
+    .card {
+      --accent: var(--offline);
+      position: relative;
+      background: var(--card);
+      border: 3px solid var(--accent);
+      border-left-width: 16px;
+      border-radius: 18px;
+      padding: 22px 26px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .card.running { --accent: var(--running); }
+    .card.idle    { --accent: var(--idle); }
+    .card.down    { --accent: var(--down); }
+    .card.offline { --accent: var(--offline); opacity: .8; }
+
+    .mid { font-size: clamp(1.8rem, 3.4vw, 3rem); font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+    .card { container-type: inline-size; }
+    .badge {
+      flex: 1 1 auto; min-height: 90px;               /* mengisi ruang tengah kartu: terbaca dari jauh */
+      display: flex; align-items: center; justify-content: center;
+      padding: 8px 18px; border-radius: 14px; font-weight: 900; text-align: center;
+      font-size: clamp(2rem, 4.4vw, 4rem);            /* cadangan jika browser tanpa container query */
+      font-size: clamp(2rem, 15cqw, 7rem);
+      letter-spacing: .05em; color: #fff;
+      background: var(--accent);
+    }
+    .card.idle .badge { color: #1a1300; }
+
+    .reason {
+      min-height: 1.2em;
+      font-size: clamp(1.3rem, 2.8vw, 2.4rem); font-weight: 800; color: #fff;
+    }
+    .reason:empty::before { content: "\00a0"; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: auto; }
+    .stat { background: #0d1117; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+    .stat .label { color: var(--muted); font-size: clamp(.8rem, 1.2vw, 1.05rem); text-transform: uppercase; letter-spacing: .06em; }
+    .stat .value { font-size: clamp(1.6rem, 3.2vw, 3rem); font-size: clamp(1.6rem, 8cqw, 3.6rem); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
+    .stat.hot .value { color: #ff8a8a; }
+
+    .updated { color: var(--muted); font-size: clamp(.9rem, 1.4vw, 1.2rem); }
+    .updated.stale { color: #ffb4b4; font-weight: 700; }
+
+    /* ---------- mesin DOWN: paling mencolok ---------- */
+    .card.down {
+      background: var(--down);
+      border-color: #fff;
+      border-left-width: 3px;
+      animation: pulse 1s ease-in-out infinite;
+      box-shadow: 0 0 0 4px var(--down), 0 0 48px 10px rgba(229, 34, 43, .75);
+      z-index: 1;
+    }
+    .card.down .badge { background: #fff; color: var(--down); font-size: clamp(2.6rem, 6vw, 5.6rem); font-size: clamp(2.6rem, 19cqw, 9rem); }
+    .card.down .reason { font-size: clamp(1.8rem, 3.8vw, 3.4rem); }
+    .card.down .stat { background: rgba(0, 0, 0, .35); border-color: rgba(255, 255, 255, .4); }
+    .card.down .stat .label, .card.down .updated { color: #ffe3e3; }
+    @keyframes pulse {
+      0%, 100% { filter: brightness(1); }
+      50%      { filter: brightness(1.35); }
+    }
+    @media (prefers-reduced-motion: reduce) { .card.down { animation: none; } }
+
+    .empty { color: var(--muted); font-size: 1.5rem; grid-column: 1 / -1; text-align: center; padding: 60px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Monitoring Line Produksi</h1>
+    <div class="summary" id="summary" aria-live="polite"></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </header>
+  <div id="banner" role="alert">Koneksi ke server terputus. Menampilkan data terakhir, mencoba lagi...</div>
+  <main id="grid"><div class="empty">Memuat data…</div></main>
+
+  <script>
+    'use strict';
+    // Alamat API. Default: server yang sama. Bisa diganti lewat ?api=http://host:3000/api/machines
+    const API_URL = new URLSearchParams(location.search).get('api') || '/api/machines';
+    const POLL_MS = 3000;          // 3-5 detik sesuai soal
+    const TZ = 'Asia/Jakarta';
+
+    const STATUS_LABEL = { RUNNING: 'RUNNING', IDLE: 'IDLE', DOWN: 'DOWN', OFFLINE: 'OFFLINE' };
+    const REASON_LABEL = { FAULT_BUTTON: 'MESIN RUSAK (tombol FAULT)', OVERHEAT: 'SUHU MOTOR TERLALU PANAS' };
+
+    const grid = document.getElementById('grid');
+    const summary = document.getElementById('summary');
+    const banner = document.getElementById('banner');
+    const cards = new Map();          // machine_id -> {root, refs}
+    let lastData = null;
+
+    function el(tag, className, text) {
+      const e = document.createElement(tag);
+      if (className) e.className = className;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    }
+
+    function stat(label, valueText) {
+      const box = el('div', 'stat');
+      box.append(el('div', 'label', label));
+      const v = el('div', 'value', valueText);
+      box.append(v);
+      return { box, value: v };
+    }
+
+    function buildCard(id) {
+      const root = el('section', 'card offline');
+      const idEl = el('div', 'mid', id);
+      const badge = el('div', 'badge', 'OFFLINE');
+      const reason = el('div', 'reason', '');
+      const out = stat('Output', '0');
+      const rej = stat('Reject', '0');
+      const tmp = stat('Suhu °C', '--');
+      const stats = el('div', 'stats');
+      stats.append(out.box, rej.box, tmp.box);
+      const updated = el('div', 'updated', 'Belum ada data');
+      root.append(idEl, badge, reason, stats, updated);
+      return { root, refs: { badge, reason, out, rej, tmp, tmpBox: tmp.box, updated } };
+    }
+
+    function fmtTime(iso) {   // 24 jam, pakai titik dua (HH:MM:SS), zona WIB
+      return new Date(iso).toLocaleTimeString('en-GB', { timeZone: TZ, hour12: false });
+    }
+    function ago(sec) {
+      if (sec == null) return '';
+      if (sec < 60) return sec + ' detik lalu';
+      if (sec < 3600) return Math.floor(sec / 60) + ' menit lalu';
+      return Math.floor(sec / 3600) + ' jam lalu';
+    }
+
+    function render(data) {
+      const list = data.machines || [];
+      if (list.length === 0) { grid.replaceChildren(el('div', 'empty', 'Belum ada mesin terdaftar')); cards.clear(); return; }
+      if (grid.querySelector('.empty')) grid.replaceChildren();
+
+      const counts = { RUNNING: 0, IDLE: 0, DOWN: 0, OFFLINE: 0 };
+      // DOWN tampil paling kiri/atas, lalu urut ID
+      const order = { DOWN: 0, OFFLINE: 1, IDLE: 2, RUNNING: 3 };
+      const sorted = [...list].sort((a, b) => (order[a.status] - order[b.status]) || a.machine_id.localeCompare(b.machine_id));
+
+      sorted.forEach((m, i) => {
+        let c = cards.get(m.machine_id);
+        if (!c) { c = buildCard(m.machine_id); cards.set(m.machine_id, c); }
+        if (grid.children[i] !== c.root) grid.insertBefore(c.root, grid.children[i] || null);
+
+        const status = STATUS_LABEL[m.status] ? m.status : 'OFFLINE';
+        counts[status]++;
+        const r = c.refs;
+        c.root.className = 'card ' + status.toLowerCase();
+        r.badge.textContent = STATUS_LABEL[status];
+        r.reason.textContent = status === 'DOWN' ? (REASON_LABEL[m.reason] || 'MESIN BERHENTI') : '';
+        r.out.value.textContent = m.output_today;
+        r.rej.value.textContent = m.reject_today;
+        r.tmp.value.textContent = m.temperature_c == null ? '--' : m.temperature_c.toFixed(1);
+        r.tmpBox.classList.toggle('hot', m.temperature_c != null && m.temperature_c >= 70);
+        if (m.last_seen) {
+          r.updated.textContent = 'Update terakhir: ' + fmtTime(m.last_seen) + ' (' + ago(m.seconds_since_last_seen) + ')';
+          r.updated.classList.toggle('stale', status === 'OFFLINE');
+        } else {
+          r.updated.textContent = 'Belum ada data';
+          r.updated.classList.add('stale');
+        }
+      });
+
+      // hapus kartu mesin yang sudah tidak ada
+      const ids = new Set(list.map((m) => m.machine_id));
+      for (const [id, c] of cards) if (!ids.has(id)) { c.root.remove(); cards.delete(id); }
+
+      summary.replaceChildren(
+        ...['RUNNING', 'IDLE', 'DOWN', 'OFFLINE'].map((s) => el('span', 'chip ' + s.toLowerCase(), counts[s] + ' ' + s))
+      );
+    }
+
+    async function poll() {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        const res = await fetch(API_URL, { cache: 'no-store', signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        lastData = await res.json();
+        banner.classList.remove('show');
+        render(lastData);
+      } catch (e) {
+        // jangan kosongkan layar: biarkan data terakhir, tampilkan peringatan
+        banner.classList.add('show');
+        console.warn('poll gagal:', e);
+      }
+    }
+
+    function tickClock() {
+      const d = new Date();
+      document.getElementById('clock').textContent =
+        d.toLocaleDateString('id-ID', { timeZone: TZ, weekday: 'long', day: '2-digit', month: 'short' })
+        + '  ' + d.toLocaleTimeString('en-GB', { timeZone: TZ, hour12: false }) + ' WIB';
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+    tickClock();
+    setInterval(tickClock, 1000);
+  </script>
+</body>
+</html>
