@@ -65,7 +65,7 @@ SPEC.md     analisa kebutuhan (Modul 4)
 Lingkungan: CachyOS, Node.js (LTS), PostgreSQL 18 lokal, Chromium. Dua tahap: simulator Node, lalu firmware ESP32 di Wokwi lewat tunnel.
 
 **1. Backend + simulator (`tools/sim-device.js`)**
-- `db/schema.sql` + `db/seed.sql` berhasil dibuat; `db/queries.sql` menghasilkan **RUNNING 150 / IDLE 45 / DOWN 45 menit** (total 240) — cocok dengan soal.
+- `db/schema.sql` + `db/seed.sql` berhasil dibuat; `db/queries.sql` menghasilkan **RUNNING 150 / IDLE 45 / DOWN 45 menit** (total 240).
 - `POST /api/ingest`: **201** pesan baru, **200** `duplicate` saat seq yang sama dikirim ulang, **401** device key salah, **400** payload tidak valid, **201** setelah `boot_id` baru (restart).
 - Simulator `--flaky`: pesan gagal dikirim ulang dengan seq/delta yang sama, tidak ada hitungan hilang, dan pasangan `(machine_id, boot_id, seq)` tidak pernah dobel di database.
 - Skenario MC-03: FAULT → `DOWN (FAULT_BUTTON)`, suhu ≥ 70 °C → `DOWN (OVERHEAT)`, turun < 65 °C → normal lagi (hysteresis). Semua perubahan tercatat di `telemetry` dan `state_history`.
